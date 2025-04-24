@@ -1,8 +1,5 @@
-Here's a clean and informative `README.md` template for your **Core Backend API** project (FastAPI + PostgreSQL) that works well with the v0.dev Dashboard UI and Docker setup.
+## **📝 README.md (Retail Backend API Service)**
 
----
-
-```markdown
 # 🧠 Core Backend API
 
 This is the backend service for the Retail Camera Analytics Dashboard, built with **FastAPI** and backed by **PostgreSQL**. It provides RESTful APIs (and optional Socket.IO) to support:
@@ -26,8 +23,7 @@ This is the backend service for the Retail Camera Analytics Dashboard, built wit
 ---
 
 ## 📁 Project Structure
-
-```plaintext
+```markdown
 core-api/
 ├── app/
 │   ├── main.py              # Entry point
