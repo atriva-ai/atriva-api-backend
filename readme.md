@@ -27,7 +27,7 @@ This is the backend service for the Retail Camera Analytics Dashboard, built wit
 
 ## 📁 Project Structure
 
-```
+```plaintext
 core-api/
 ├── app/
 │   ├── main.py              # Entry point
