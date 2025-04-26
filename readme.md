@@ -44,7 +44,8 @@ retail-backend/
 │
 ├── Dockerfile
 ├── requirements.txt
-└── README.md```
+└── README.md
+```
 
 ---
 
