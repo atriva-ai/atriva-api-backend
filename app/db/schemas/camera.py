@@ -16,17 +16,15 @@ class CameraCreate(CameraBase):
 class CameraUpdate(CameraBase):
     pass
 
-'''
 class CameraOut(CameraBase):
     id: int
 
     class Config:
-        orm_mode = True
-'''
+        from_attributes = True
 
 class CameraRead(CameraBase):
     id: int
     analytics_config: Optional[Dict] = {}
 
     class Config:
-        orm_mode = True
+        from_attributes = True

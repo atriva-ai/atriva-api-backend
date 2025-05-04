@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from models.zone import Zone
-from schemas.zone import ZoneCreate, ZoneUpdate
+from app.db.models.zone import Zone
+from app.db.schemas.zone import ZoneCreate, ZoneUpdate
 
 def create_zone(db: Session, zone: ZoneCreate):
     db_zone = Zone(**zone.dict())

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Table, ForeignKey
 from sqlalchemy.orm import relationship
-from db import Base
+from app.database import Base
 
 # Association table for many-to-many relationship between Camera and Zone
 camera_zones = Table(

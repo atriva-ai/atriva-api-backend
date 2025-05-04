@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from db import get_db
-from crud import camera as crud_camera
-from schemas import camera as schema_camera
+from app.dependencies import get_db
+from app.db.crud import camera as crud_camera
+from app.db.schemas import camera as schema_camera
 
-router = APIRouter()schema_camera
+router = APIRouter()
 
-@router.post("/", response_model=.CameraRead)
+@router.post("/", response_model=schema_camera.CameraRead)
 def create_camera(camera: schema_camera.CameraCreate, db: Session = Depends(get_db)):
     return crud_camera.create_camera(db, camera)
 
@@ -30,6 +30,6 @@ def delete_camera(camera_id: int, db: Session = Depends(get_db)):
     crud_camera.delete_camera(db, camera_id)
     return {"message": "Camera deleted"}
 
-@router.put("/{camera_id}/analytics", response_model=CameraRead)
-def set_camera_analytics(camera_id: int, analytics_config: dict, db: Session = Depends(get_db)):
-    return crud_camera.update_camera_analytics(db, camera_id, analytics_config)
+# @router.put("/{camera_id}/analytics", response_model=CameraRead)
+# def set_camera_analytics(camera_id: int, analytics_config: dict, db: Session = Depends(get_db)):
+#     return crud_camera.update_camera_analytics(db, camera_id, analytics_config)

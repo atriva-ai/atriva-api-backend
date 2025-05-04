@@ -1,8 +1,8 @@
 from sqlalchemy import Column, String, Boolean, Integer, JSON, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.db.base import Base
-from .zone import camera_zones
+from app.database import Base
+from app.db.models.zone import camera_zones
 import uuid
 
 class Camera(Base):

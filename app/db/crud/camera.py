@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
-from models.camera import Camera
-from models.zone import Zone
-from schemas.camera import CameraCreate, CameraUpdate
+from app.db.models.camera import Camera
+from app.db.models.zone import Zone
+from app.db.schemas.camera import CameraCreate, CameraUpdate
 
 def create_camera(db: Session, camera: CameraCreate):
     db_camera = Camera(**camera.dict(exclude={"zone_ids"}))

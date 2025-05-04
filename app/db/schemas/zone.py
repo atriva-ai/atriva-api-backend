@@ -16,7 +16,7 @@ class ZoneOut(ZoneBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 '''
         
 class ZoneRead(ZoneBase):
@@ -24,4 +24,4 @@ class ZoneRead(ZoneBase):
     camera_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
