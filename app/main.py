@@ -1,15 +1,26 @@
 from fastapi import FastAPI
-from app.routes import camera, store, settings
+from app.routes import store, settings, camera
 from app.database import engine, Base
 import time
 import psycopg2
 import os
 from fastapi.middleware.cors import CORSMiddleware
 
+# Import all models to ensure they are registered with SQLAlchemy
+from app.db.models.store import Store
+from app.db.models.settings import Settings
+from app.db.models.camera import Camera
+from app.db.models.zone import Zone
+
 # Step 1: Initialize DB models/tables
 # Only create tables automatically in dev, not production
 if os.getenv("ENV", "production") != "production":
+    print("Development mode: Dropping and recreating all tables...")
+    # Drop all tables first to ensure clean state
+    Base.metadata.drop_all(bind=engine)
+    # Create tables in correct order
     Base.metadata.create_all(bind=engine)
+    print("✅ Tables recreated successfully")
 
 # Step 2: Initialize FastAPI app
 app = FastAPI(
@@ -43,7 +54,7 @@ app.add_middleware(
 
 # Step 3: Include routes
 try:
-    app.include_router(camera.router, prefix="/api/v1/cameras", tags=["Cameras"])
+    app.include_router(camera.router)
 except Exception as e:
     print("Failed to load camera routes:", e)
 

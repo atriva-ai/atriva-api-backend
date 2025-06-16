@@ -2,6 +2,7 @@
 from app.database import engine, SessionLocal, Base
 from app.db.models.store import Store
 from app.db.models.settings import Settings
+from app.db.models.camera import Camera
 
 def seed():
     db = SessionLocal()

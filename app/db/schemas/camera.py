@@ -1,30 +1,41 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl, ConfigDict
+from datetime import datetime
 from typing import Optional, List, Dict
 
 class CameraBase(BaseModel):
     name: str
-    status: bool
-    uuid: str
-    ip_address: str
-    url: Optional[str]
-    settings: Optional[dict] = {}
+    rtsp_url: str
+    location: Optional[str] = None
+    is_active: bool = True
     zone_ids: Optional[List[int]] = []
 
 class CameraCreate(CameraBase):
-    analytics_config: Optional[Dict] = {}
+    pass
 
-class CameraUpdate(CameraBase):
+class CameraUpdate(BaseModel):
+    name: Optional[str] = None
+    rtsp_url: Optional[str] = None
+    location: Optional[str] = None
+    is_active: Optional[bool] = None
+    zone_ids: Optional[List[int]] = None
+
+class CameraInDB(CameraBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class Camera(CameraInDB):
     pass
 
 class CameraOut(CameraBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CameraRead(CameraBase):
     id: int
     analytics_config: Optional[Dict] = {}
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

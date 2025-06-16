@@ -14,4 +14,7 @@ class Settings(Base):
     store_notifications_enabled = Column(Boolean, default=True)
     store_analytics_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now()) 
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Settings(id={self.id}, store_name='{self.store_name}')>" 

@@ -15,6 +15,10 @@ class Zone(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
+    description = Column(String)
 
     # Back reference to cameras in this zone
     cameras = relationship("Camera", secondary=camera_zones, back_populates="zones")
+
+    def __repr__(self):
+        return f"<Zone(id={self.id}, name='{self.name}')>"
