@@ -1,8 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
-from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
-from app.db.models.zone import camera_zones
+from sqlalchemy.orm import relationship
 
 class Camera(Base):
     __tablename__ = "cameras"
@@ -15,5 +14,4 @@ class Camera(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    zones = relationship("Zone", secondary=camera_zones, back_populates="cameras")
+    zones = relationship("Zone", back_populates="camera")

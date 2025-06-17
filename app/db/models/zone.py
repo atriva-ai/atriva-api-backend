@@ -1,24 +1,17 @@
-from sqlalchemy import Column, Integer, String, Table, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from datetime import datetime
 from app.database import Base
-
-# Association table for many-to-many relationship between Camera and Zone
-camera_zones = Table(
-    "camera_zones",
-    Base.metadata,
-    Column("camera_id", Integer, ForeignKey("cameras.id"), primary_key=True),
-    Column("zone_id", Integer, ForeignKey("zones.id"), primary_key=True),
-)
+from sqlalchemy.orm import relationship
 
 class Zone(Base):
     __tablename__ = "zones"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
-    description = Column(String)
+    camera_id = Column(Integer, ForeignKey("cameras.id"), nullable=False)
+    analytics_id = Column(String, nullable=False)  # String ID for analytics type
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Back reference to cameras in this zone
-    cameras = relationship("Camera", secondary=camera_zones, back_populates="zones")
-
-    def __repr__(self):
-        return f"<Zone(id={self.id}, name='{self.name}')>"
+    camera = relationship("Camera", back_populates="zones")

@@ -28,7 +28,5 @@ dist/
 .coverage
 .tox/
 
-# Secrets (make sure to exclude sensitive data!)
-.env
 
 .DS_Store

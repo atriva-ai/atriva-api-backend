@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import store, settings, camera
+from app.routes import store, settings, camera, zone
 from app.database import engine, Base
 import time
 import psycopg2
@@ -7,10 +7,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import all models to ensure they are registered with SQLAlchemy
-from app.db.models.store import Store
-from app.db.models.settings import Settings
-from app.db.models.camera import Camera
-from app.db.models.zone import Zone
+from app.db.models import Store, Settings, Camera, Zone
 
 # Step 1: Initialize DB models/tables
 # Only create tables automatically in dev, not production
@@ -57,6 +54,11 @@ try:
     app.include_router(camera.router)
 except Exception as e:
     print("Failed to load camera routes:", e)
+
+try:
+    app.include_router(zone.router)
+except Exception as e:
+    print("Failed to load zone routes:", e)
 
 try:
     app.include_router(store.router, prefix="/api/v1/store", tags=["Store"])

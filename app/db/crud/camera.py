@@ -1,13 +1,12 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.db.models.camera import Camera
-from app.db.models.zone import Zone
 from app.db.schemas.camera import CameraCreate, CameraUpdate
 
 def create_camera(db: Session, camera: CameraCreate) -> Camera:
-    db_camera = Camera(**camera.model_dump())
-    if camera.zone_ids:
-        db_camera.zones = db.query(Zone).filter(Zone.id.in_(camera.zone_ids)).all()
+    # Exclude zone_ids from the model dump since it's not a field in the Camera model
+    camera_data = camera.model_dump(exclude={'zone_ids'})
+    db_camera = Camera(**camera_data)
     db.add(db_camera)
     db.commit()
     db.refresh(db_camera)
@@ -36,12 +35,9 @@ def update_camera(
     if not db_camera:
         return None
 
-    update_data = camera_update.model_dump(exclude_unset=True)
+    update_data = camera_update.model_dump(exclude_unset=True, exclude={'zone_ids'})
     for field, value in update_data.items():
         setattr(db_camera, field, value)
-
-    if camera_update.zone_ids:
-        db_camera.zones = db.query(Zone).filter(Zone.id.in_(camera_update.zone_ids)).all()
 
     db.commit()
     db.refresh(db_camera)
