@@ -16,9 +16,13 @@ def create_camera(db: Session, camera: CameraCreate) -> Camera:
 def get_cameras(
     db: Session, 
     skip: int = 0, 
-    limit: int = 100
+    limit: int = 100,
+    is_active: Optional[bool] = None
 ) -> List[Camera]:
-    return db.query(Camera).offset(skip).limit(limit).all()
+    query = db.query(Camera)
+    if is_active is not None:
+        query = query.filter(Camera.is_active == is_active)
+    return query.offset(skip).limit(limit).all()
 
 def get_camera(db: Session, camera_id: int) -> Optional[Camera]:
     return db.query(Camera).filter(Camera.id == camera_id).first()
@@ -60,3 +64,9 @@ def update_camera_analytics(db: Session, camera_id: int, analytics_config: dict)
         db.commit()
         db.refresh(db_camera)
     return db_camera
+
+def get_cameras_count(db: Session, is_active: Optional[bool] = None) -> int:
+    query = db.query(Camera)
+    if is_active is not None:
+        query = query.filter(Camera.is_active == is_active)
+    return query.count()
