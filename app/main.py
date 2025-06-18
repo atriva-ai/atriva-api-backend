@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import store, settings, camera, zone
+from app.routes import store, settings, camera, zone, analytics
 from app.database import engine, Base
 import time
 import psycopg2
@@ -7,7 +7,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import all models to ensure they are registered with SQLAlchemy
-from app.db.models import Store, Settings, Camera, Zone
+from app.db.models import Store, Settings, Camera, Zone, Analytics
 
 # Step 1: Initialize DB models/tables
 # Only create tables automatically in dev, not production
@@ -69,6 +69,11 @@ try:
     app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"])
 except Exception as e:
     print("Failed to load settings routes:", e)
+
+try:
+    app.include_router(analytics.router)
+except Exception as e:
+    print("Failed to load analytics routes:", e)
 
 # @app.get("/")
 # def health():
