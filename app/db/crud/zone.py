@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.db.models.zone import Zone
-from app.db.schemas.zone import ZoneCreate, ZoneUpdate, ZoneRead
+from app.db.schemas.zone import ZoneCreate, ZoneUpdate, Zone as ZoneSchema
 
 def get_zone(db: Session, zone_id: int) -> Optional[Zone]:
     return db.query(Zone).filter(Zone.id == zone_id).first()

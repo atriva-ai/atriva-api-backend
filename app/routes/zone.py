@@ -3,14 +3,14 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
 from app.db.crud import zone as zone_crud
-from app.db.schemas.zone import ZoneCreate, ZoneUpdate, ZoneRead, Zone
+from app.db.schemas.zone import ZoneCreate, ZoneUpdate, Zone
 
 router = APIRouter(
     prefix="/api/v1/zones",
     tags=["zones"]
 )
 
-@router.get("/", response_model=List[ZoneRead])
+@router.get("/", response_model=List[Zone])
 def get_all_zones(
     skip: int = 0,
     limit: int = 100,
@@ -19,7 +19,7 @@ def get_all_zones(
     """Get all zones"""
     return zone_crud.get_all_zones(db, skip=skip, limit=limit)
 
-@router.post("/", response_model=ZoneRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=Zone, status_code=status.HTTP_201_CREATED)
 def create_zone(
     zone: ZoneCreate,
     db: Session = Depends(get_db)
@@ -33,7 +33,7 @@ def create_zone(
         )
     return zone_crud.create_zone(db, zone)
 
-@router.get("/{zone_id}", response_model=ZoneRead)
+@router.get("/{zone_id}", response_model=Zone)
 def get_zone(
     zone_id: int,
     db: Session = Depends(get_db)
@@ -47,7 +47,7 @@ def get_zone(
         )
     return db_zone
 
-@router.put("/{zone_id}", response_model=ZoneRead)
+@router.put("/{zone_id}", response_model=Zone)
 def update_zone(
     zone_id: int,
     zone: ZoneUpdate,
@@ -74,7 +74,7 @@ def delete_zone(
             detail="Zone not found"
         )
 
-@router.patch("/{zone_id}/toggle", response_model=ZoneRead)
+@router.patch("/{zone_id}/toggle", response_model=Zone)
 def toggle_zone_active(
     zone_id: int,
     db: Session = Depends(get_db)
@@ -88,7 +88,7 @@ def toggle_zone_active(
         )
     return db_zone
 
-@router.get("/camera/{camera_id}", response_model=List[ZoneRead])
+@router.get("/camera/{camera_id}", response_model=List[Zone])
 def get_zones_by_camera(
     camera_id: int,
     db: Session = Depends(get_db)

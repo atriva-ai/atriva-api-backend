@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from app.database import get_db
-from app.db.schemas.analytics import AnalyticsCreate, AnalyticsUpdate, AnalyticsRead, AnalyticsTypeConfig, CameraAnalyticsCreate
-from app.db.models.analytics import Analytics
+from app.db.schemas.analytics import AnalyticsCreate, AnalyticsUpdate, Analytics, CameraAnalyticsCreate
 from app.db.models.camera import Camera
 from app.db.crud import analytics as analytics_crud
 from app.constants.analytics import get_all_analytics_configs
