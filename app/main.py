@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import store, settings, camera, zone, analytics
+from app.routes import store, settings, camera, zone, analytics, video_pipeline
 from app.database import engine, Base
 import time
 import psycopg2
@@ -74,6 +74,11 @@ try:
     app.include_router(analytics.router)
 except Exception as e:
     print("Failed to load analytics routes:", e)
+
+try:
+    app.include_router(video_pipeline.router)
+except Exception as e:
+    print("Failed to load video pipeline routes:", e)
 
 # @app.get("/")
 # def health():
