@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import store, settings, camera, zone, analytics, video_pipeline
+from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference
 from app.database import engine, Base
 import time
 import psycopg2
@@ -79,6 +79,11 @@ try:
     app.include_router(video_pipeline.router)
 except Exception as e:
     print("Failed to load video pipeline routes:", e)
+
+try:
+    app.include_router(ai_inference.router)
+except Exception as e:
+    print("Failed to load AI inference routes:", e)
 
 # @app.get("/")
 # def health():
