@@ -29,9 +29,16 @@ app = FastAPI(
 
 # CORS configuration
 origins = [
+    # Frontend origins
     "http://localhost:3000",     # Next.js development server
     "http://127.0.0.1:3000",    # Next.js development server alternative
     "http://frontend:3000",      # Docker service name
+    
+    # Nginx proxy origins (for requests coming through nginx)
+    "http://localhost",          # nginx proxy
+    "http://localhost:80",       # nginx proxy explicit port
+    "http://127.0.0.1",         # nginx proxy alternative
+    "http://127.0.0.1:80",      # nginx proxy explicit port
 ]
 
 # Add production origins if in production

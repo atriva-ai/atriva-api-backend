@@ -1,12 +1,12 @@
 from pydantic import BaseModel, HttpUrl, ConfigDict
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 class CameraBase(BaseModel):
     name: str
     rtsp_url: str
     location: Optional[str] = None
-    is_active: bool = True
+    is_active: bool = False
     zone_ids: Optional[List[int]] = []
 
 class CameraCreate(CameraBase):
@@ -17,10 +17,11 @@ class CameraUpdate(BaseModel):
     rtsp_url: Optional[str] = None
     location: Optional[str] = None
     is_active: Optional[bool] = None
-    zone_ids: Optional[List[int]] = None
+    video_info: Optional[Dict[str, Any]] = None
 
 class CameraInDB(CameraBase):
     id: int
+    video_info: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 

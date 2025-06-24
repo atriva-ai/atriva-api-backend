@@ -96,6 +96,27 @@ async def get_camera_video_info(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get video info: {str(e)}")
 
+@router.post("/camera/{camera_id}/video-info-url/")
+async def get_camera_video_info_url(
+    camera_id: int,
+    url: str = Form(...),
+    db: Session = Depends(get_db),
+    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
+):
+    """Get video information for a specific camera from URL"""
+    # Verify camera exists
+    camera = camera_crud.get_camera(db, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    try:
+        # Forward request to video pipeline service
+        data = {"url": url}
+        response = await client.post(f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/video-info-url/", data=data)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get video info: {str(e)}")
+
 @router.post("/camera/{camera_id}/decode/")
 async def decode_camera_video(
     camera_id: int,

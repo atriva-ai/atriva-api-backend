@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Table, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Table, ForeignKey, JSON
 from datetime import datetime
 from app.database import Base
 from sqlalchemy.orm import relationship
@@ -18,7 +18,8 @@ class Camera(Base):
     name = Column(String, nullable=False)
     rtsp_url = Column(String, nullable=False)
     location = Column(String)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=False)
+    video_info = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
