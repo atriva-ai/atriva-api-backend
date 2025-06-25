@@ -246,32 +246,28 @@ async def activate_camera(
     client: httpx.AsyncClient = Depends(get_video_pipeline_client)
 ):
     """
-    Activate a camera by starting video decoding
+    Activate a camera by starting video decoding and checking decode status
     """
-    # Get the camera from database
     db_camera = camera_crud.get_camera(db, camera_id=camera_id)
     if db_camera is None:
         raise HTTPException(status_code=404, detail="Camera not found")
-    
     if not db_camera.rtsp_url:
         raise HTTPException(status_code=400, detail="Camera has no RTSP URL")
-    
-    # Initialize response
+
     response = {
         "camera_id": camera_id,
         "rtsp_url": db_camera.rtsp_url,
         "activation": {
             "status": "pending",
             "decode_status": None,
+            "decode_check": None,
             "errors": []
         }
     }
-    
     try:
         print(f"🚀 Activating camera {camera_id}: {db_camera.rtsp_url}")
-        
-        # Start video decoding
         decode_data = {
+            "camera_id": str(camera_id),
             "url": db_camera.rtsp_url,
             "fps": fps,
             "force_format": force_format or "none"
@@ -279,34 +275,91 @@ async def activate_camera(
         decode_response = await client.post(
             f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/",
             data=decode_data,
-            timeout=60.0  # Longer timeout for decoding
+            timeout=60.0
         )
-        
         if decode_response.status_code == 200:
             decode_result = decode_response.json()
             response["activation"]["decode_status"] = decode_result
-            response["activation"]["status"] = "activated"
-            
-            # Update camera status to active
-            camera_crud.update_camera(
-                db=db, 
-                camera_id=camera_id, 
-                camera_update=CameraUpdate(is_active=True)
+            # Immediately check decode status
+            status_response = await client.get(
+                f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/status/",
+                params={"camera_id": str(camera_id)},
+                timeout=10.0
             )
-            
-            print(f"✅ Camera {camera_id} activated successfully")
+            if status_response.status_code == 200:
+                status_result = status_response.json()
+                response["activation"]["decode_check"] = status_result
+                if status_result.get("status") == "running" and status_result.get("frame_count", 0) > 0:
+                    response["activation"]["status"] = "activated"
+                    camera_crud.update_camera(
+                        db=db,
+                        camera_id=camera_id,
+                        camera_update=CameraUpdate(is_active=True)
+                    )
+                else:
+                    response["activation"]["status"] = "error"
+                    response["activation"]["errors"].append("Decode did not start or no frames decoded.")
+            else:
+                response["activation"]["status"] = "error"
+                response["activation"]["errors"].append(f"Failed to get decode status: {status_response.status_code}")
         else:
             response["activation"]["errors"].append(f"Failed to start decoding: {decode_response.status_code}")
             print(f"❌ Failed to activate camera {camera_id}")
-            
     except httpx.TimeoutException:
         response["activation"]["errors"].append("Activation request timed out")
         print(f"⏰ Activation request timed out for camera {camera_id}")
     except Exception as e:
         response["activation"]["errors"].append(f"Activation error: {str(e)}")
         print(f"❌ Activation error for camera {camera_id}: {str(e)}")
-    
     return response
+
+@router.post("/{camera_id}/deactivate/")
+async def deactivate_camera(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
+):
+    """
+    Deactivate a camera by stopping video decoding
+    """
+    db_camera = camera_crud.get_camera(db, camera_id=camera_id)
+    if db_camera is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    try:
+        stop_response = await client.post(
+            f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/stop/",
+            data={"camera_id": str(camera_id)},
+            timeout=10.0
+        )
+        if stop_response.status_code == 200:
+            camera_crud.update_camera(
+                db=db,
+                camera_id=camera_id,
+                camera_update=CameraUpdate(is_active=False)
+            )
+            return {"message": "Camera deactivated", "camera_id": camera_id}
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to stop decoding: {stop_response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to deactivate camera: {str(e)}")
+
+@router.get("/{camera_id}/decode-status/")
+async def get_decode_status(
+    camera_id: int,
+    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
+):
+    """
+    Get the decode status for a camera
+    """
+    try:
+        status_response = await client.get(
+            f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/status/",
+            params={"camera_id": str(camera_id)},
+            timeout=10.0
+        )
+        return status_response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get decode status: {str(e)}")
 
 # @router.put("/{camera_id}/analytics", response_model=CameraRead)
 # def set_camera_analytics(camera_id: int, analytics_config: dict, db: Session = Depends(get_db)):
