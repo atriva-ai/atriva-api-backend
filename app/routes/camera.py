@@ -280,6 +280,13 @@ async def activate_camera(
         if decode_response.status_code == 200:
             decode_result = decode_response.json()
             response["activation"]["decode_status"] = decode_result
+            
+            # Check if decode was already running
+            if decode_result.get("status") == "already_running":
+                response["activation"]["status"] = "already_running"
+                print(f"✅ Camera {camera_id} was already running")
+                return response
+            
             # Immediately check decode status
             status_response = await client.get(
                 f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/status/",
@@ -360,6 +367,24 @@ async def get_decode_status(
         return status_response.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get decode status: {str(e)}")
+
+@router.get("/{camera_id}/latest-frame/")
+async def get_latest_frame(
+    camera_id: int,
+    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
+):
+    """
+    Get the latest decoded frame for a camera
+    """
+    try:
+        response = await client.get(
+            f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/latest-frame/",
+            params={"camera_id": str(camera_id)},
+            timeout=10.0
+        )
+        return response.content
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get latest frame: {str(e)}")
 
 # @router.put("/{camera_id}/analytics", response_model=CameraRead)
 # def set_camera_analytics(camera_id: int, analytics_config: dict, db: Session = Depends(get_db)):
