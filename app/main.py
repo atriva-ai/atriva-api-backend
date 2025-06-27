@@ -18,6 +18,11 @@ if os.getenv("ENV", "production") != "production":
     # Create tables in correct order
     Base.metadata.create_all(bind=engine)
     print("✅ Tables recreated successfully")
+    
+    # Seed the database with initial data
+    from app.init_db import seed
+    seed()
+    print("✅ Database seeded successfully")
 
 # Step 2: Initialize FastAPI app
 app = FastAPI(

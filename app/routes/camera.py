@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import httpx
@@ -7,6 +8,7 @@ from ..database import get_db
 from ..db.models.camera import Camera as CameraModel
 from ..db.schemas.camera import CameraCreate, CameraUpdate, CameraInDB
 from ..db.crud import camera as camera_crud
+from io import BytesIO
 
 router = APIRouter(
     prefix="/api/v1/cameras",
@@ -382,7 +384,16 @@ async def get_latest_frame(
             params={"camera_id": str(camera_id)},
             timeout=10.0
         )
-        return response.content
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=f"Video pipeline error: {response.status_code}")
+        
+        # Return the binary content directly as a streaming response
+        return StreamingResponse(
+            BytesIO(response.content),
+            media_type="image/jpeg",
+            headers={"Content-Disposition": f"inline; filename=frame_{camera_id}.jpg"}
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get latest frame: {str(e)}")
 
