@@ -24,7 +24,7 @@ def get_all_analytics(
     db: Session = Depends(get_db)
 ):
     """Get all analytics configurations"""
-    return []
+    return analytics_crud.get_all_analytics(db, skip=skip, limit=limit)
 
 @router.post("/", response_model=Analytics, status_code=status.HTTP_201_CREATED)
 def create_analytics(
@@ -32,16 +32,7 @@ def create_analytics(
     db: Session = Depends(get_db)
 ):
     """Create a new analytics configuration"""
-    # Mock response
-    return {
-        "id": 1,
-        "name": analytics.name,
-        "type": analytics.type,
-        "config": analytics.config or {},
-        "is_active": analytics.is_active,
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z"
-    }
+    return analytics_crud.create_analytics(db, analytics)
 
 @router.get("/{analytics_id}", response_model=Analytics)
 def get_analytics(
@@ -49,10 +40,13 @@ def get_analytics(
     db: Session = Depends(get_db)
 ):
     """Get a specific analytics configuration"""
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Analytics configuration not found"
-    )
+    db_analytics = analytics_crud.get_analytics(db, analytics_id)
+    if db_analytics is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analytics configuration not found"
+        )
+    return db_analytics
 
 @router.put("/{analytics_id}", response_model=Analytics)
 def update_analytics(
@@ -61,16 +55,13 @@ def update_analytics(
     db: Session = Depends(get_db)
 ):
     """Update an analytics configuration"""
-    # Mock response
-    return {
-        "id": analytics_id,
-        "name": analytics.name or "Updated Analytics",
-        "type": analytics.type or "people_counting",
-        "config": analytics.config or {},
-        "is_active": analytics.is_active if analytics.is_active is not None else True,
-        "created_at": "2024-01-01T00:00:00Z",
-        "updated_at": "2024-01-01T00:00:00Z"
-    }
+    db_analytics = analytics_crud.update_analytics(db, analytics_id, analytics)
+    if db_analytics is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analytics configuration not found"
+        )
+    return db_analytics
 
 @router.delete("/{analytics_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_analytics(
@@ -78,6 +69,12 @@ def delete_analytics(
     db: Session = Depends(get_db)
 ):
     """Delete an analytics configuration"""
+    success = analytics_crud.delete_analytics(db, analytics_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analytics configuration not found"
+        )
     return None
 
 @router.get("/camera/{camera_id}", response_model=List[Analytics])
@@ -86,7 +83,7 @@ def get_camera_analytics(
     db: Session = Depends(get_db)
 ):
     """Get all analytics configurations for a specific camera"""
-    return []
+    return analytics_crud.get_camera_analytics(db, camera_id)
 
 @router.post("/camera", status_code=status.HTTP_201_CREATED)
 def add_analytics_to_camera(
@@ -94,6 +91,16 @@ def add_analytics_to_camera(
     db: Session = Depends(get_db)
 ):
     """Add an analytics configuration to a camera"""
+    success = analytics_crud.add_analytics_to_camera(
+        db, 
+        camera_analytics.camera_id, 
+        camera_analytics.analytics_id
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Camera or analytics configuration not found"
+        )
     return {"message": "Analytics added to camera successfully"}
 
 @router.delete("/camera/{camera_id}/{analytics_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -103,4 +110,10 @@ def remove_analytics_from_camera(
     db: Session = Depends(get_db)
 ):
     """Remove an analytics configuration from a camera"""
+    success = analytics_crud.remove_analytics_from_camera(db, camera_id, analytics_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Camera or analytics configuration not found"
+        )
     return None 
