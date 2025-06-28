@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference
+from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference, alert_engine
 from app.database import engine, Base
 import time
 import psycopg2
@@ -7,7 +7,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import all models to ensure they are registered with SQLAlchemy
-from app.db.models import Store, Settings, Camera, Zone, Analytics
+from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine
 
 # Step 1: Initialize DB models/tables
 # Only create tables automatically in dev, not production
@@ -86,6 +86,11 @@ try:
     app.include_router(analytics.router)
 except Exception as e:
     print("Failed to load analytics routes:", e)
+
+try:
+    app.include_router(alert_engine.router)
+except Exception as e:
+    print("Failed to load alert engine routes:", e)
 
 try:
     app.include_router(video_pipeline.router)

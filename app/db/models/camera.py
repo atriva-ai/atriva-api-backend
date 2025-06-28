@@ -11,6 +11,9 @@ camera_analytics = Table(
     Column('analytics_id', Integer, ForeignKey('analytics.id'), primary_key=True)
 )
 
+# Import the association table for camera-alert_engine relationship
+from .camera_alert_engine import camera_alert_engines
+
 class Camera(Base):
     __tablename__ = "cameras"
 
@@ -26,6 +29,7 @@ class Camera(Base):
     # Relationships
     zones = relationship("Zone", back_populates="camera")
     analytics = relationship("Analytics", secondary=camera_analytics, back_populates="cameras")
+    alert_engines = relationship("AlertEngine", secondary=camera_alert_engines, back_populates="cameras")
 
     def __repr__(self):
         return f"<Camera(id={self.id}, name='{self.name}', rtsp_url='{self.rtsp_url}')>"
