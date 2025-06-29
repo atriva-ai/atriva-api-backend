@@ -27,9 +27,6 @@ class CameraInDB(CameraBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-class Camera(CameraInDB):
-    pass
-
 class CameraOut(CameraBase):
     id: int
 

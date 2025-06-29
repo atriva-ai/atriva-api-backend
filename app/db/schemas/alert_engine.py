@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from .camera import Camera
+from .camera import CameraInDB
 
 class AlertEngineBase(BaseModel):
     name: str = Field(..., description="Name of the alert engine")
@@ -26,7 +26,7 @@ class AlertEngineInDB(AlertEngineBase):
     updated_at: datetime
 
 class AlertEngine(AlertEngineInDB):
-    cameras: Optional[List[Camera]] = None
+    cameras: Optional[List[CameraInDB]] = None
 
 class CameraAlertEngineCreate(BaseModel):
     camera_id: int = Field(..., description="ID of the camera")
