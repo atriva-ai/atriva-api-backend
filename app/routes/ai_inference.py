@@ -79,6 +79,70 @@ async def get_available_models(client: httpx.AsyncClient = Depends(get_ai_infere
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get available models: {str(e)}")
 
+@router.get("/model/info/")
+async def get_model_info(client: httpx.AsyncClient = Depends(get_ai_inference_client)):
+    """Get model information including supported models, accelerators, and architecture"""
+    try:
+        response = await client.get(f"{AI_INFERENCE_URL}/model/info")
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get model info: {str(e)}")
+
+@router.post("/model/load/")
+async def load_model(
+    model_name: str = Form(...),
+    accelerator: str = Form("cpu32"),
+    client: httpx.AsyncClient = Depends(get_ai_inference_client)
+):
+    """Load an AI model by name and accelerator"""
+    try:
+        params = {
+            "model_name": model_name,
+            "accelerator": accelerator
+        }
+        response = await client.post(f"{AI_INFERENCE_URL}/model/load", params=params)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+@router.post("/inference/latest-frame/")
+async def inference_latest_frame(
+    camera_id: str = Form(...),
+    model_name: str = Form(...),
+    accelerator: str = Form("cpu32"),
+    client: httpx.AsyncClient = Depends(get_ai_inference_client)
+):
+    """Run inference on the latest frame from a camera"""
+    try:
+        params = {
+            "camera_id": camera_id,
+            "model_name": model_name,
+            "accelerator": accelerator
+        }
+        response = await client.post(f"{AI_INFERENCE_URL}/inference/latest-frame", params=params)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to run inference on latest frame: {str(e)}")
+
+@router.post("/inference/background/")
+async def start_background_inference(
+    camera_id: str = Form(...),
+    model_name: str = Form(...),
+    accelerator: str = Form("cpu32"),
+    client: httpx.AsyncClient = Depends(get_ai_inference_client)
+):
+    """Start background inference on all frames for a camera"""
+    try:
+        params = {
+            "camera_id": camera_id,
+            "model_name": model_name,
+            "accelerator": accelerator
+        }
+        response = await client.post(f"{AI_INFERENCE_URL}/inference/background", params=params)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start background inference: {str(e)}")
+
 @router.post("/camera/{camera_id}/detect/")
 async def detect_objects_in_camera_image(
     camera_id: int,
