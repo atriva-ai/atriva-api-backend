@@ -12,12 +12,10 @@ from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine
 # Step 1: Initialize DB models/tables
 # Only create tables automatically in dev, not production
 if os.getenv("ENV", "production") != "production":
-    print("Development mode: Dropping and recreating all tables...")
-    # Drop all tables first to ensure clean state
-    Base.metadata.drop_all(bind=engine)
-    # Create tables in correct order
+    print("Development mode: Creating tables if they don't exist...")
+    # Create tables in correct order (only if they don't exist)
     Base.metadata.create_all(bind=engine)
-    print("✅ Tables recreated successfully")
+    print("✅ Tables created successfully")
     
     # Seed the database with initial data
     from app.init_db import seed

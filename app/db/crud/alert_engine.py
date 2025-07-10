@@ -20,6 +20,9 @@ def get_alert_engines(db: Session, skip: int = 0, limit: int = 100) -> List[Aler
 def get_camera_alert_engines(db: Session, camera_id: int) -> List[AlertEngine]:
     return db.query(AlertEngine).join(camera_alert_engines).filter(camera_alert_engines.c.camera_id == camera_id).all()
 
+def get_cameras_by_alert_engine(db: Session, alert_engine_id: int) -> List[Camera]:
+    return db.query(Camera).join(camera_alert_engines).filter(camera_alert_engines.c.alert_engine_id == alert_engine_id).all()
+
 def create_alert_engine(db: Session, alert_engine: AlertEngineCreate) -> AlertEngine:
     db_alert_engine = AlertEngine(**alert_engine.model_dump())
     db.add(db_alert_engine)
