@@ -5,6 +5,7 @@ import time
 import psycopg2
 import os
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 # Import all models to ensure they are registered with SQLAlchemy
 from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine
@@ -103,3 +104,20 @@ except Exception as e:
 # @app.get("/")
 # def health():
 #    return {"ok": True}
+
+@app.get("/health")
+def health():
+    """Health check endpoint for Docker health checks"""
+    try:
+        # Test database connection
+        from app.database import engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
+@app.get("/")
+def root():
+    """Root endpoint"""
+    return {"message": "Retail Dashboard Backend API", "status": "running"}

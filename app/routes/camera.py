@@ -242,11 +242,13 @@ async def validate_camera_video(
                     "fps": 1,  # Extract 1 frame per second for validation
                     "force_format": "none"  # Use software decoding for validation
                 }
+                print(f"[DEBUG] Sending decode request to video pipeline for camera_id={camera_id}, url={db_camera.rtsp_url}, payload={decode_data}")
                 decode_response = await client.post(
                     f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/",
                     data=decode_data,
                     timeout=60.0  # Longer timeout for decoding
                 )
+                print(f"[DEBUG] Video pipeline decode response for camera_id={camera_id}: status={decode_response.status_code}, body={decode_response.text}")
                 
                 if decode_response.status_code == 200:
                     decode_result = decode_response.json()
