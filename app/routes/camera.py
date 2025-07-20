@@ -65,16 +65,19 @@ async def create_camera(
     db: Session = Depends(get_db),
     client: httpx.AsyncClient = Depends(get_video_pipeline_client)
 ):
+    print(f"[DEBUG] create_camera called with: {camera}")
     """
     Create a new camera and validate the video stream (get video info only)
     """
-    # First, create the camera in the database with inactive status
+    # First, create the camera in the database with the provided active status
     camera_data = camera.model_dump()
-    camera_data['is_active'] = False  # Ensure camera is created as inactive
+    # Use the provided is_active value or default to True for new cameras
+    if 'is_active' not in camera_data:
+        camera_data['is_active'] = True  # Default to active for new cameras
     db_camera = camera_crud.create_camera(db=db, camera=CameraCreate(**camera_data))
     
     # Initialize runtime status
-    update_camera_status(db_camera.id, is_active=False, streaming_status="stopped")
+    update_camera_status(db_camera.id, is_active=camera_data['is_active'], streaming_status="stopped")
     
     # Convert SQLAlchemy model to Pydantic schema for serialization
     camera_schema = CameraInDB.model_validate(db_camera)
@@ -282,6 +285,7 @@ async def activate_camera(
     db: Session = Depends(get_db),
     client: httpx.AsyncClient = Depends(get_video_pipeline_client)
 ):
+    print(f"[DEBUG] activate_camera called for camera_id={camera_id}, fps={fps}, force_format={force_format}")
     """
     Activate a camera by starting video decoding
     """
@@ -313,6 +317,7 @@ async def activate_camera(
             data=decode_data,
             timeout=60.0
         )
+        
         if decode_response.status_code == 200:
             decode_result = decode_response.json()
             response["activation"]["decode_status"] = decode_result
@@ -325,7 +330,7 @@ async def activate_camera(
             
             # Check decode status after a short delay to see if it started successfully
             import asyncio
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)  # Increased delay to allow more time for startup
             
             status_response = await client.get(
                 f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/status/",
@@ -341,17 +346,29 @@ async def activate_camera(
                     print(f"✅ Camera {camera_id} activated successfully")
                 else:
                     response["activation"]["status"] = "error"
-                    response["activation"]["errors"].append("Decode did not start or no frames decoded.")
+                    last_error = status_result.get("last_error", "Unknown error")
+                    response["activation"]["errors"].append(f"Decode failed: {last_error}")
+                    print(f"❌ Decode failed for camera {camera_id}: {last_error}")
             else:
                 response["activation"]["status"] = "error"
                 response["activation"]["errors"].append(f"Failed to get decode status: {status_response.status_code}")
         else:
-            response["activation"]["errors"].append(f"Failed to start decoding: {decode_response.status_code}")
-            print(f"❌ Failed to activate camera {camera_id}")
+            # Get detailed error from response
+            try:
+                error_detail = decode_response.json()
+                error_msg = error_detail.get("detail", f"HTTP {decode_response.status_code}")
+            except:
+                error_msg = f"HTTP {decode_response.status_code}"
+            
+            response["activation"]["status"] = "error"
+            response["activation"]["errors"].append(f"Failed to start decoding: {error_msg}")
+            print(f"❌ Failed to activate camera {camera_id}: {error_msg}")
     except httpx.TimeoutException:
-        response["activation"]["errors"].append("Activation request timed out")
+        response["activation"]["status"] = "error"
+        response["activation"]["errors"].append("Activation request timed out - check if RTSP stream is accessible")
         print(f"⏰ Activation request timed out for camera {camera_id}")
     except Exception as e:
+        response["activation"]["status"] = "error"
         response["activation"]["errors"].append(f"Activation error: {str(e)}")
         print(f"❌ Activation error for camera {camera_id}: {str(e)}")
     return response
