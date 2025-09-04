@@ -21,7 +21,7 @@ router = APIRouter(
 
 # Service configurations
 VIDEO_PIPELINE_URL = os.getenv("VIDEO_PIPELINE_URL", "http://video-pipeline:8002")
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://atriva-ai-rockchip:8001")
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
 
 # Runtime status manager - simple in-memory storage
 camera_status: Dict[int, Dict] = {}
@@ -248,7 +248,7 @@ async def validate_camera_video(
                 decode_data = {
                     "url": db_camera.rtsp_url,
                     "fps": 1,  # Extract 1 frame per second for validation
-                    "force_format": "none"  # Use software decoding for validation
+                    "force_format": "rkmpp"  # Use software decoding for validation
                 }
                 print(f"[DEBUG] Sending decode request to video pipeline for camera_id={camera_id}, url={db_camera.rtsp_url}, payload={decode_data}")
                 decode_response = await client.post(
@@ -286,7 +286,7 @@ async def validate_camera_video(
 async def activate_camera(
     camera_id: int,
     fps: Optional[int] = 1,
-    force_format: Optional[str] = None,
+    force_format: Optional[str] = "rkmpp",
     db: Session = Depends(get_db),
     client: httpx.AsyncClient = Depends(get_video_pipeline_client)
 ):
