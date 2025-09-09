@@ -5,6 +5,7 @@ from typing import List, Optional, Dict
 import httpx
 import os
 import logging
+import json
 from ..database import get_db
 from ..db.models.camera import Camera as CameraModel
 from ..db.schemas.camera import CameraCreate, CameraUpdate, CameraInDB
@@ -25,6 +26,9 @@ AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
 
 # Runtime status manager - simple in-memory storage
 camera_status: Dict[int, Dict] = {}
+
+# Startup initialization flag
+_startup_initialized = False
 
 async def get_video_pipeline_client():
     """Get HTTP client for video pipeline service"""
@@ -53,15 +57,83 @@ def update_camera_status(camera_id: int, is_active: bool = None, streaming_statu
     if streaming_status is not None:
         camera_status[camera_id]["streaming_status"] = streaming_status
 
+async def initialize_cameras_on_startup(db: Session, client: httpx.AsyncClient):
+    """Initialize cameras on startup - re-activate active cameras and start tracking"""
+    global _startup_initialized
+    if _startup_initialized:
+        return
+    
+    print("🚀 Initializing cameras on startup...")
+    try:
+        # Get all cameras from database
+        cameras = camera_crud.get_cameras(db, skip=0, limit=1000)
+        print(f"Found {len(cameras)} cameras in database")
+        
+        for camera in cameras:
+            print(f"Checking camera {camera.id}: is_active={camera.is_active}, vehicle_tracking_enabled={camera.vehicle_tracking_enabled}")
+            
+            # Initialize runtime status
+            update_camera_status(camera.id, is_active=camera.is_active, streaming_status="stopped")
+            
+            # Re-activate camera if it's active and has RTSP URL
+            if camera.is_active and camera.rtsp_url:
+                try:
+                    print(f"🔄 Re-activating camera {camera.id}")
+                    decode_data = {
+                        "camera_id": str(camera.id),
+                        "url": camera.rtsp_url,
+                        "fps": 1,
+                        "force_format": "rkmpp"
+                    }
+                    decode_response = await client.post(
+                        f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/",
+                        data=decode_data,
+                        timeout=30.0
+                    )
+                    if decode_response.status_code == 200:
+                        print(f"✅ Camera {camera.id} re-activated successfully")
+                        update_camera_status(camera.id, streaming_status="streaming")
+                    else:
+                        print(f"❌ Failed to re-activate camera {camera.id}: {decode_response.status_code}")
+                except Exception as e:
+                    print(f"❌ Error re-activating camera {camera.id}: {str(e)}")
+            
+            # Re-start vehicle tracking if enabled
+            if camera.vehicle_tracking_enabled:
+                try:
+                    print(f"🔄 Re-starting vehicle tracking for camera {camera.id}")
+                    ai_service_url = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
+                    tracking_response = await client.post(
+                        f"{ai_service_url}/vehicle-tracking/start/",
+                        json={"camera_id": str(camera.id)},
+                        timeout=10.0
+                    )
+                    if tracking_response.status_code == 200:
+                        print(f"✅ Vehicle tracking re-started for camera {camera.id}")
+                    else:
+                        print(f"❌ Failed to re-start vehicle tracking for camera {camera.id}: {tracking_response.status_code}")
+                except Exception as e:
+                    print(f"❌ Error re-starting vehicle tracking for camera {camera.id}: {str(e)}")
+        
+        _startup_initialized = True
+        print("✅ Camera startup initialization completed")
+        
+    except Exception as e:
+        print(f"❌ Error during camera startup initialization: {str(e)}")
+
 @router.get("/", response_model=List[CameraInDB])
-def list_cameras(
+async def list_cameras(
     db: Session = Depends(get_db),
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
 ):
     """
-    List all cameras
+    List all cameras and initialize on first call
     """
+    # Initialize cameras on startup (only on first call)
+    await initialize_cameras_on_startup(db, client)
+    
     return camera_crud.get_cameras(db, skip=skip, limit=limit)
 
 @router.post("/", response_model=dict)
@@ -96,6 +168,53 @@ async def create_camera(
             "errors": []
         }
     }
+    
+    # If camera is active and has RTSP URL, start decoding automatically
+    if camera_data['is_active'] and camera.rtsp_url:
+        try:
+            print(f"🚀 Auto-starting camera {db_camera.id} (is_active=True)")
+            decode_data = {
+                "camera_id": str(db_camera.id),
+                "url": camera.rtsp_url,
+                "fps": 1,
+                "force_format": "rkmpp"  # Use rkmpp hardware acceleration by default
+            }
+            decode_response = await client.post(
+                f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/",
+                data=decode_data,
+                timeout=30.0
+            )
+            if decode_response.status_code == 200:
+                print(f"✅ Auto-started camera {db_camera.id}")
+                response["video_validation"]["auto_started"] = True
+            else:
+                print(f"❌ Failed to auto-start camera {db_camera.id}: {decode_response.status_code}")
+                response["video_validation"]["errors"].append(f"Failed to auto-start camera: {decode_response.status_code}")
+        except Exception as e:
+            print(f"❌ Error auto-starting camera {db_camera.id}: {str(e)}")
+            response["video_validation"]["errors"].append(f"Auto-start error: {str(e)}")
+    else:
+        print(f"⏸️ Camera {db_camera.id} created but not auto-started (is_active={camera_data['is_active']}, has_rtsp={bool(camera.rtsp_url)})")
+    
+    # Start vehicle tracking if enabled
+    if camera_data.get('vehicle_tracking_enabled', False):
+        try:
+            print(f"🚗 Starting vehicle tracking for camera {db_camera.id}")
+            ai_service_url = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
+            tracking_response = await client.post(
+                f"{ai_service_url}/vehicle-tracking/start/",
+                json={"camera_id": str(db_camera.id)},
+                timeout=10.0
+            )
+            if tracking_response.status_code == 200:
+                print(f"✅ Vehicle tracking started for camera {db_camera.id}")
+                response["video_validation"]["vehicle_tracking_started"] = True
+            else:
+                print(f"❌ Failed to start vehicle tracking for camera {db_camera.id}: {tracking_response.status_code}")
+                response["video_validation"]["errors"].append(f"Failed to start vehicle tracking: {tracking_response.status_code}")
+        except Exception as e:
+            print(f"❌ Error starting vehicle tracking for camera {db_camera.id}: {str(e)}")
+            response["video_validation"]["errors"].append(f"Vehicle tracking start error: {str(e)}")
     
     # Get video information if RTSP URL is provided
     if camera.rtsp_url:
@@ -142,7 +261,7 @@ async def create_camera(
     
     return response
 
-@router.get("/{camera_id}", response_model=CameraInDB)
+@router.get("/{camera_id}/", response_model=CameraInDB)
 def get_camera(
     camera_id: int,
     db: Session = Depends(get_db)
@@ -155,31 +274,177 @@ def get_camera(
         raise HTTPException(status_code=404, detail="Camera not found")
     return CameraInDB.model_validate(db_camera)
 
-@router.put("/{camera_id}", response_model=CameraInDB)
-def update_camera(
+@router.put("/{camera_id}/", response_model=CameraInDB)
+async def update_camera(
     camera_id: int,
     camera_update: CameraUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
 ):
     """
     Update a camera
     """
+    # Get current camera state
+    current_camera = camera_crud.get_camera(db, camera_id=camera_id)
+    if current_camera is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    # Update the camera
     db_camera = camera_crud.update_camera(db, camera_id=camera_id, camera_update=camera_update)
     if db_camera is None:
         raise HTTPException(status_code=404, detail="Camera not found")
+    
+    # Handle enable/disable logic
+    update_data = camera_update.model_dump(exclude_unset=True)
+    
+    # If is_active status changed, handle enable/disable
+    if 'is_active' in update_data:
+        new_active_status = update_data['is_active']
+        old_active_status = current_camera.is_active
+        
+        if new_active_status != old_active_status:
+            print(f"🔄 Camera {camera_id} active status changed: {old_active_status} -> {new_active_status}")
+            
+            if new_active_status:
+                # Enable camera - start decoding if RTSP URL exists
+                if db_camera.rtsp_url:
+                    try:
+                        print(f"🚀 Enabling camera {camera_id}")
+                        decode_data = {
+                            "camera_id": str(camera_id),
+                            "url": db_camera.rtsp_url,
+                            "fps": 1,
+                            "force_format": "rkmpp"
+                        }
+                        decode_response = await client.post(
+                            f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/",
+                            data=decode_data,
+                            timeout=30.0
+                        )
+                        if decode_response.status_code == 200:
+                            print(f"✅ Camera {camera_id} enabled successfully")
+                        else:
+                            print(f"❌ Failed to enable camera {camera_id}: {decode_response.status_code}")
+                    except Exception as e:
+                        print(f"❌ Error enabling camera {camera_id}: {str(e)}")
+                else:
+                    print(f"⚠️ Camera {camera_id} enabled but no RTSP URL provided")
+            else:
+                # Disable camera - stop decoding
+                try:
+                    print(f"⏸️ Disabling camera {camera_id}")
+                    stop_response = await client.post(
+                        f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/stop-decode/",
+                        data={"camera_id": str(camera_id)},
+                        timeout=10.0
+                    )
+                    if stop_response.status_code == 200:
+                        print(f"✅ Camera {camera_id} disabled successfully")
+                    else:
+                        print(f"❌ Failed to disable camera {camera_id}: {stop_response.status_code}")
+                except Exception as e:
+                    print(f"❌ Error disabling camera {camera_id}: {str(e)}")
+            
+            # Update runtime status
+            update_camera_status(camera_id, is_active=new_active_status)
+    
+    # Handle vehicle tracking enable/disable
+    print(f"🔍 Update data for camera {camera_id}: {update_data}")
+    print(f"🔍 vehicle_tracking_enabled in update_data: {'vehicle_tracking_enabled' in update_data}")
+    
+    if 'vehicle_tracking_enabled' in update_data:
+        new_tracking_status = update_data['vehicle_tracking_enabled']
+        old_tracking_status = current_camera.vehicle_tracking_enabled
+        
+        print(f"🔍 Vehicle tracking update check for camera {camera_id}:")
+        print(f"   - Old status: {old_tracking_status}")
+        print(f"   - New status: {new_tracking_status}")
+        print(f"   - Status changed: {new_tracking_status != old_tracking_status}")
+        
+        if new_tracking_status != old_tracking_status:
+            print(f"🔄 Camera {camera_id} vehicle tracking status changed: {old_tracking_status} -> {new_tracking_status}")
+            
+            try:
+                # Call AI service to start/stop vehicle tracking
+                ai_service_url = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
+                
+                if new_tracking_status:
+                    # Start vehicle tracking
+                    tracking_response = await client.post(
+                        f"{ai_service_url}/vehicle-tracking/start/",
+                        json={"camera_id": str(camera_id)},
+                        timeout=10.0
+                    )
+                    if tracking_response.status_code == 200:
+                        print(f"✅ Vehicle tracking started for camera {camera_id}")
+                    else:
+                        print(f"❌ Failed to start vehicle tracking for camera {camera_id}: {tracking_response.status_code}")
+                else:
+                    # Stop vehicle tracking
+                    tracking_response = await client.post(
+                        f"{ai_service_url}/vehicle-tracking/stop/",
+                        json={"camera_id": str(camera_id)},
+                        timeout=10.0
+                    )
+                    if tracking_response.status_code == 200:
+                        print(f"✅ Vehicle tracking stopped for camera {camera_id}")
+                    else:
+                        print(f"❌ Failed to stop vehicle tracking for camera {camera_id}: {tracking_response.status_code}")
+            except Exception as e:
+                print(f"❌ Error managing vehicle tracking for camera {camera_id}: {str(e)}")
+    
     return CameraInDB.model_validate(db_camera)
 
-@router.delete("/{camera_id}")
-def delete_camera(
+@router.delete("/{camera_id}/")
+async def delete_camera(
     camera_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
 ):
     """
     Delete a camera
     """
+    # First stop video decoding if it's running
+    try:
+        print(f"🛑 Stopping video decode for camera {camera_id} before deletion")
+        stop_response = await client.post(
+            f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/stop-decode/",
+            data={"camera_id": str(camera_id)},
+            timeout=10.0
+        )
+        if stop_response.status_code == 200:
+            print(f"✅ Video decode stopped for camera {camera_id}")
+        else:
+            print(f"⚠️ Failed to stop video decode for camera {camera_id}: {stop_response.status_code}")
+    except Exception as e:
+        print(f"⚠️ Error stopping video decode for camera {camera_id}: {str(e)}")
+    
+    # Stop vehicle tracking if it's running
+    try:
+        print(f"🛑 Stopping vehicle tracking for camera {camera_id} before deletion")
+        ai_service_url = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
+        tracking_response = await client.post(
+            f"{ai_service_url}/vehicle-tracking/stop/",
+            json={"camera_id": str(camera_id)},
+            timeout=10.0
+        )
+        if tracking_response.status_code == 200:
+            print(f"✅ Vehicle tracking stopped for camera {camera_id}")
+        else:
+            print(f"⚠️ Failed to stop vehicle tracking for camera {camera_id}: {tracking_response.status_code}")
+    except Exception as e:
+        print(f"⚠️ Error stopping vehicle tracking for camera {camera_id}: {str(e)}")
+    
+    # Now delete the camera from database
     success = camera_crud.delete_camera(db, camera_id=camera_id)
     if not success:
         raise HTTPException(status_code=404, detail="Camera not found")
+    
+    # Clean up runtime status
+    if camera_id in camera_status:
+        del camera_status[camera_id]
+        print(f"✅ Runtime status cleaned up for camera {camera_id}")
+    
     return {"message": "Camera deleted successfully"}
 
 @router.post("/{camera_id}/validate-video/")
@@ -246,9 +511,10 @@ async def validate_camera_video(
             # Step 2: Start video decoding (extract frames)
             try:
                 decode_data = {
+                    "camera_id": str(camera_id),
                     "url": db_camera.rtsp_url,
                     "fps": 1,  # Extract 1 frame per second for validation
-                    "force_format": "rkmpp"  # Use software decoding for validation
+                    "force_format": "rkmpp"  # Use rkmpp hardware acceleration for validation
                 }
                 print(f"[DEBUG] Sending decode request to video pipeline for camera_id={camera_id}, url={db_camera.rtsp_url}, payload={decode_data}")
                 decode_response = await client.post(
@@ -572,8 +838,6 @@ async def start_vehicle_tracking(
     try:
         # Proxy request to AI service
         data = {"camera_id": str(camera_id)}
-        if tracking_config:
-            data["tracking_config"] = tracking_config
         
         response = await client.post(
             f"{AI_SERVICE_URL}/vehicle-tracking/start/",
@@ -613,7 +877,7 @@ async def stop_vehicle_tracking(
         # Proxy request to AI service
         response = await client.post(
             f"{AI_SERVICE_URL}/vehicle-tracking/stop/",
-            data={"camera_id": str(camera_id)},
+            json={"camera_id": str(camera_id)},
             timeout=30.0
         )
         
@@ -762,7 +1026,7 @@ async def disable_vehicle_tracking(
         try:
             response = await client.post(
                 f"{AI_SERVICE_URL}/vehicle-tracking/stop/",
-                data={"camera_id": str(camera_id)},
+                json={"camera_id": str(camera_id)},
                 timeout=30.0
             )
         except Exception:

@@ -4,6 +4,7 @@ from app.database import engine, Base
 import time
 import psycopg2
 import os
+import logging
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -30,6 +31,10 @@ app = FastAPI(
     redoc_url="/redoc",         # default is "/redoc"
     openapi_url="/openapi.json" # default is "/openapi.json"
 )
+
+# Configure logging to reduce repetitive logs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("fastapi").setLevel(logging.WARNING)
 
 # CORS configuration
 origins = [
