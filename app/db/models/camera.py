@@ -23,6 +23,9 @@ class Camera(Base):
     location = Column(String)
     is_active = Column(Boolean, default=False)
     video_info = Column(JSON, nullable=True)
+    # Vehicle tracking configuration
+    vehicle_tracking_enabled = Column(Boolean, default=False)
+    vehicle_tracking_config = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -4,7 +4,9 @@ from app.database import engine, Base
 import time
 import psycopg2
 import os
+import logging
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 # Import all models to ensure they are registered with SQLAlchemy
 from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine, LicensePlateDetection
@@ -29,6 +31,10 @@ app = FastAPI(
     redoc_url="/redoc",         # default is "/redoc"
     openapi_url="/openapi.json" # default is "/openapi.json"
 )
+
+# Configure logging to reduce repetitive logs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("fastapi").setLevel(logging.WARNING)
 
 # CORS configuration
 origins = [
@@ -108,3 +114,20 @@ except Exception as e:
 # @app.get("/")
 # def health():
 #    return {"ok": True}
+
+@app.get("/health")
+def health():
+    """Health check endpoint for Docker health checks"""
+    try:
+        # Test database connection
+        from app.database import engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
+@app.get("/")
+def root():
+    """Root endpoint"""
+    return {"message": "Retail Dashboard Backend API", "status": "running"}

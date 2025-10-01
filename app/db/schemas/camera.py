@@ -8,6 +8,9 @@ class CameraBase(BaseModel):
     location: Optional[str] = None
     is_active: bool = False
     zone_ids: Optional[List[int]] = []
+    # Vehicle tracking configuration
+    vehicle_tracking_enabled: bool = False
+    vehicle_tracking_config: Optional[Dict[str, Any]] = None
 
 class CameraCreate(CameraBase):
     pass
@@ -18,6 +21,9 @@ class CameraUpdate(BaseModel):
     location: Optional[str] = None
     is_active: Optional[bool] = None
     video_info: Optional[Dict[str, Any]] = None
+    # Vehicle tracking configuration
+    vehicle_tracking_enabled: Optional[bool] = None
+    vehicle_tracking_config: Optional[Dict[str, Any]] = None
 
 class CameraInDB(CameraBase):
     id: int
