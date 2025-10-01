@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference, alert_engine
+from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference, alert_engine, license_plate_detection
 from app.database import engine, Base
 import time
 import psycopg2
@@ -7,7 +7,7 @@ import os
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import all models to ensure they are registered with SQLAlchemy
-from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine
+from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine, LicensePlateDetection
 
 # Step 1: Initialize DB models/tables
 # Only create tables automatically in dev, not production
@@ -99,6 +99,11 @@ try:
     app.include_router(ai_inference.router)
 except Exception as e:
     print("Failed to load AI inference routes:", e)
+
+try:
+    app.include_router(license_plate_detection.router)
+except Exception as e:
+    print("Failed to load license plate detection routes:", e)
 
 # @app.get("/")
 # def health():
