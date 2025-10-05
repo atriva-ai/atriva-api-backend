@@ -1,12 +1,14 @@
 from fastapi import FastAPI
 from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference, alert_engine, license_plate_detection
-from app.database import engine, Base
+from app.database import engine, Base, get_db
 import time
 import psycopg2
 import os
 import logging
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+import httpx
+from sqlalchemy.orm import Session
 
 # Import all models to ensure they are registered with SQLAlchemy
 from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine, LicensePlateDetection
@@ -32,9 +34,9 @@ app = FastAPI(
     openapi_url="/openapi.json" # default is "/openapi.json"
 )
 
-# Configure logging to reduce repetitive logs
-logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-logging.getLogger("fastapi").setLevel(logging.WARNING)
+# Configure logging to show API requests
+logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+logging.getLogger("fastapi").setLevel(logging.INFO)
 
 # CORS configuration
 origins = [
@@ -127,7 +129,34 @@ def health():
     except Exception as e:
         return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
 
-@app.get("/")
-def root():
-    """Root endpoint"""
-    return {"message": "Retail Dashboard Backend API", "status": "running"}
+@app.on_event("startup")
+async def startup_event():
+    """Initialize cameras and services on application startup"""
+    print("🚀 BACKEND STARTUP: Starting application initialization...")
+    
+    try:
+        # Get database session
+        db = next(get_db())
+        
+        # Initialize cameras on startup
+        async with httpx.AsyncClient() as client:
+            await camera.initialize_cameras_on_startup(db, client)
+        
+        print("✅ BACKEND STARTUP: Application initialization completed successfully")
+        
+    except Exception as e:
+        print(f"❌ BACKEND STARTUP ERROR: Failed to initialize application: {str(e)}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if 'db' in locals():
+            db.close()
+
+@app.get("/test-log")
+def test_log():
+    """Test endpoint to verify logging works"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("🧪 TEST LOG: This should appear in backend logs!")
+    print("🧪 PRINT LOG: This should appear in backend logs!")
+    return {"message": "Test log endpoint called", "timestamp": "2025-10-05"}

@@ -63,11 +63,11 @@ async def initialize_cameras_on_startup(db: Session, client: httpx.AsyncClient):
     if _startup_initialized:
         return
     
-    print("🚀 Initializing cameras on startup...")
+    print("🚀 STARTUP INITIALIZATION: Initializing cameras on startup...")
     try:
         # Get all cameras from database
         cameras = camera_crud.get_cameras(db, skip=0, limit=1000)
-        print(f"Found {len(cameras)} cameras in database")
+        print(f"🚀 STARTUP: Found {len(cameras)} cameras in database")
         
         for camera in cameras:
             print(f"Checking camera {camera.id}: is_active={camera.is_active}, vehicle_tracking_enabled={camera.vehicle_tracking_enabled}")
@@ -75,10 +75,23 @@ async def initialize_cameras_on_startup(db: Session, client: httpx.AsyncClient):
             # Initialize runtime status
             update_camera_status(camera.id, is_active=camera.is_active, streaming_status="stopped")
             
-            # Re-activate camera if it's active and has RTSP URL
-            if camera.is_active and camera.rtsp_url:
+            # Stop inactive cameras that might be running
+            if not camera.is_active and camera.rtsp_url:
                 try:
-                    print(f"🔄 Re-activating camera {camera.id}")
+                    print(f"🛑 STARTUP: Stopping inactive camera {camera.id} on startup (is_active={camera.is_active})")
+                    stop_response = await client.post(f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/stop/", 
+                                                    json={"camera_id": str(camera.id)})
+                    if stop_response.status_code == 200:
+                        print(f"✅ Stopped inactive camera {camera.id}")
+                    else:
+                        print(f"⚠️ Failed to stop inactive camera {camera.id}: {stop_response.status_code}")
+                except Exception as e:
+                    print(f"⚠️ Error stopping inactive camera {camera.id}: {e}")
+            
+            # Re-activate camera if it's active and has RTSP URL
+            elif camera.is_active and camera.rtsp_url:
+                try:
+                    print(f"🔄 STARTUP: Re-activating camera {camera.id} (is_active={camera.is_active})")
                     decode_data = {
                         "camera_id": str(camera.id),
                         "url": camera.rtsp_url,
@@ -122,18 +135,14 @@ async def initialize_cameras_on_startup(db: Session, client: httpx.AsyncClient):
         print(f"❌ Error during camera startup initialization: {str(e)}")
 
 @router.get("/", response_model=List[CameraInDB])
-async def list_cameras(
+def list_cameras(
     db: Session = Depends(get_db),
     skip: int = 0,
-    limit: int = 100,
-    client: httpx.AsyncClient = Depends(get_video_pipeline_client)
+    limit: int = 100
 ):
     """
-    List all cameras and initialize on first call
+    List all cameras
     """
-    # Initialize cameras on startup (only on first call)
-    await initialize_cameras_on_startup(db, client)
-    
     return camera_crud.get_cameras(db, skip=skip, limit=limit)
 
 @router.post("/", response_model=dict)
@@ -148,13 +157,23 @@ async def create_camera(
     """
     # First, create the camera in the database with the provided active status
     camera_data = camera.model_dump()
-    # Use the provided is_active value or default to True for new cameras
+    print(f"🔍 DEBUG: Original camera data: {camera_data}")
+    # Use the provided is_active value - don't override it!
     if 'is_active' not in camera_data:
-        camera_data['is_active'] = True  # Default to active for new cameras
+        camera_data['is_active'] = False  # Default to inactive for new cameras
+        print(f"🔍 DEBUG: Set default is_active=False")
+    else:
+        print(f"🔍 DEBUG: Using provided is_active={camera_data['is_active']}")
+    print(f"🔍 DEBUG: Final camera_data: {camera_data}")
     db_camera = camera_crud.create_camera(db=db, camera=CameraCreate(**camera_data))
     
-    # Initialize runtime status
-    update_camera_status(db_camera.id, is_active=camera_data['is_active'], streaming_status="stopped")
+    # CRITICAL: Check what was actually saved to the database
+    print(f"🔍 DATABASE CHECK: db_camera.is_active = {db_camera.is_active}")
+    print(f"🔍 DATABASE CHECK: db_camera.id = {db_camera.id}")
+    print(f"🔍 DATABASE CHECK: db_camera.name = {db_camera.name}")
+    
+    # Initialize runtime status using ACTUAL database value
+    update_camera_status(db_camera.id, is_active=db_camera.is_active, streaming_status="stopped")
     
     # Convert SQLAlchemy model to Pydantic schema for serialization
     camera_schema = CameraInDB.model_validate(db_camera)
@@ -170,7 +189,8 @@ async def create_camera(
     }
     
     # If camera is active and has RTSP URL, start decoding automatically
-    if camera_data['is_active'] and camera.rtsp_url:
+    # Use the ACTUAL database value, not the request data
+    if db_camera.is_active and camera.rtsp_url:
         try:
             print(f"🚀 Auto-starting camera {db_camera.id} (is_active=True)")
             decode_data = {
@@ -194,10 +214,10 @@ async def create_camera(
             print(f"❌ Error auto-starting camera {db_camera.id}: {str(e)}")
             response["video_validation"]["errors"].append(f"Auto-start error: {str(e)}")
     else:
-        print(f"⏸️ Camera {db_camera.id} created but not auto-started (is_active={camera_data['is_active']}, has_rtsp={bool(camera.rtsp_url)})")
+        print(f"⏸️ Camera {db_camera.id} created but not auto-started (is_active={db_camera.is_active}, has_rtsp={bool(camera.rtsp_url)})")
     
-    # Start vehicle tracking if enabled
-    if camera_data.get('vehicle_tracking_enabled', False):
+    # Start vehicle tracking if enabled (use database value)
+    if db_camera.vehicle_tracking_enabled:
         try:
             print(f"🚗 Starting vehicle tracking for camera {db_camera.id}")
             ai_service_url = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
@@ -284,69 +304,106 @@ async def update_camera(
     """
     Update a camera
     """
-    # Get current camera state
+    print(f"🔄 UPDATE CAMERA API CALL - Camera ID: {camera_id}")
+    print(f"🔄 Request data: {camera_update}")
+    print(f"🔄 Request model dump: {camera_update.model_dump(exclude_unset=True)}")
+    
+    # Get current camera state BEFORE update
     current_camera = camera_crud.get_camera(db, camera_id=camera_id)
+    print(f"📷 Current camera data: {current_camera}")
+    print(f"📷 Current camera is_active: {current_camera.is_active if current_camera else 'None'}")
+    print(f"📷 Current camera type: {type(current_camera.is_active) if current_camera else 'None'}")
     if current_camera is None:
         raise HTTPException(status_code=404, detail="Camera not found")
     
-    # Update the camera
-    db_camera = camera_crud.update_camera(db, camera_id=camera_id, camera_update=camera_update)
-    if db_camera is None:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    # Handle enable/disable logic
+    # Handle enable/disable logic BEFORE updating the database
     update_data = camera_update.model_dump(exclude_unset=True)
+    print(f"🔍 Update data keys: {list(update_data.keys())}")
+    print(f"🔍 Full update data: {update_data}")
     
     # If is_active status changed, handle enable/disable
     if 'is_active' in update_data:
+        print(f"🎯 is_active field detected in update!")
         new_active_status = update_data['is_active']
-        old_active_status = current_camera.is_active
+        old_active_status = current_camera.is_active  # Read OLD status BEFORE update
+        
+        print(f"🔍 Status comparison for camera {camera_id}:")
+        print(f"   - Old status: {old_active_status} (type: {type(old_active_status)})")
+        print(f"   - New status: {new_active_status} (type: {type(new_active_status)})")
+        print(f"   - Status changed: {new_active_status != old_active_status}")
+        print(f"   - Raw comparison: {new_active_status} != {old_active_status} = {new_active_status != old_active_status}")
         
         if new_active_status != old_active_status:
             print(f"🔄 Camera {camera_id} active status changed: {old_active_status} -> {new_active_status}")
             
             if new_active_status:
                 # Enable camera - start decoding if RTSP URL exists
-                if db_camera.rtsp_url:
+                if current_camera.rtsp_url:
                     try:
-                        print(f"🚀 Enabling camera {camera_id}")
+                        print(f"🚀 ACTIVATE CAMERA {camera_id} - Starting video pipeline decode")
+                        print(f"🚀 VIDEO PIPELINE URL: {VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/")
                         decode_data = {
                             "camera_id": str(camera_id),
-                            "url": db_camera.rtsp_url,
+                            "url": current_camera.rtsp_url,
                             "fps": 1,
                             "force_format": "rkmpp"
                         }
+                        print(f"🚀 DECODE REQUEST DATA: {decode_data}")
+                        print(f"🚀 Making HTTP POST request to video pipeline...")
+                        
                         decode_response = await client.post(
                             f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/",
                             data=decode_data,
                             timeout=30.0
                         )
+                        
+                        print(f"🚀 VIDEO PIPELINE RESPONSE STATUS: {decode_response.status_code}")
+                        print(f"🚀 VIDEO PIPELINE RESPONSE TEXT: {decode_response.text}")
+                        
                         if decode_response.status_code == 200:
-                            print(f"✅ Camera {camera_id} enabled successfully")
+                            print(f"✅ SUCCESS: Camera {camera_id} decode started successfully")
                         else:
-                            print(f"❌ Failed to enable camera {camera_id}: {decode_response.status_code}")
+                            print(f"❌ FAILED: Start decode for camera {camera_id}: {decode_response.status_code}")
+                            print(f"❌ FAILED RESPONSE: {decode_response.text}")
                     except Exception as e:
-                        print(f"❌ Error enabling camera {camera_id}: {str(e)}")
+                        print(f"❌ EXCEPTION: Error starting decode for camera {camera_id}: {e}")
+                        print(f"❌ EXCEPTION TYPE: {type(e)}")
                 else:
                     print(f"⚠️ Camera {camera_id} enabled but no RTSP URL provided")
             else:
                 # Disable camera - stop decoding
                 try:
-                    print(f"⏸️ Disabling camera {camera_id}")
+                    print(f"🛑 DEACTIVATE CAMERA {camera_id} - Stopping video pipeline decode")
+                    print(f"🛑 VIDEO PIPELINE URL: {VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/stop/")
+                    stop_data = {"camera_id": str(camera_id)}
+                    print(f"🛑 STOP REQUEST DATA: {stop_data}")
+                    print(f"🛑 Making HTTP POST request to video pipeline...")
+                    
                     stop_response = await client.post(
-                        f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/stop-decode/",
-                        data={"camera_id": str(camera_id)},
+                        f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/stop/",
+                        data=stop_data,
                         timeout=10.0
                     )
+                    
+                    print(f"🛑 VIDEO PIPELINE RESPONSE STATUS: {stop_response.status_code}")
+                    print(f"🛑 VIDEO PIPELINE RESPONSE TEXT: {stop_response.text}")
+                    
                     if stop_response.status_code == 200:
-                        print(f"✅ Camera {camera_id} disabled successfully")
+                        print(f"✅ SUCCESS: Camera {camera_id} decode stopped successfully")
                     else:
-                        print(f"❌ Failed to disable camera {camera_id}: {stop_response.status_code}")
+                        print(f"❌ FAILED: Stop decode for camera {camera_id}: {stop_response.status_code}")
+                        print(f"❌ FAILED RESPONSE: {stop_response.text}")
                 except Exception as e:
-                    print(f"❌ Error disabling camera {camera_id}: {str(e)}")
+                    print(f"❌ EXCEPTION: Error stopping decode for camera {camera_id}: {e}")
+                    print(f"❌ EXCEPTION TYPE: {type(e)}")
             
             # Update runtime status
             update_camera_status(camera_id, is_active=new_active_status)
+    
+    # NOW update the camera in the database
+    db_camera = camera_crud.update_camera(db, camera_id=camera_id, camera_update=camera_update)
+    if db_camera is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
     
     # Handle vehicle tracking enable/disable
     print(f"🔍 Update data for camera {camera_id}: {update_data}")
@@ -408,7 +465,7 @@ async def delete_camera(
     try:
         print(f"🛑 Stopping video decode for camera {camera_id} before deletion")
         stop_response = await client.post(
-            f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/stop-decode/",
+            f"{VIDEO_PIPELINE_URL}/api/v1/video-pipeline/decode/stop/",
             data={"camera_id": str(camera_id)},
             timeout=10.0
         )

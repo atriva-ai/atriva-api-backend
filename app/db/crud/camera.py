@@ -6,10 +6,15 @@ from app.db.schemas.camera import CameraCreate, CameraUpdate
 def create_camera(db: Session, camera: CameraCreate) -> Camera:
     # Exclude zone_ids from the model dump since it's not a field in the Camera model
     camera_data = camera.model_dump(exclude={'zone_ids'})
+    print(f"🔍 CRUD DEBUG: camera_data before creating: {camera_data}")
     db_camera = Camera(**camera_data)
+    print(f"🔍 CRUD DEBUG: db_camera before commit: {db_camera}")
+    print(f"🔍 CRUD DEBUG: db_camera.is_active before commit: {db_camera.is_active}")
     db.add(db_camera)
     db.commit()
     db.refresh(db_camera)
+    print(f"🔍 CRUD DEBUG: db_camera after commit: {db_camera}")
+    print(f"🔍 CRUD DEBUG: db_camera.is_active after commit: {db_camera.is_active}")
     return db_camera
 
 def get_cameras(
