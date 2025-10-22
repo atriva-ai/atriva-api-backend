@@ -70,7 +70,8 @@ async def initialize_cameras_on_startup(db: Session, client: httpx.AsyncClient):
         print(f"🚀 STARTUP: Found {len(cameras)} cameras in database")
         
         for camera in cameras:
-            print(f"Checking camera {camera.id}: is_active={camera.is_active}, vehicle_tracking_enabled={camera.vehicle_tracking_enabled}")
+            print(f"🚀 STARTUP: Checking camera {camera.id}: is_active={camera.is_active}, vehicle_tracking_enabled={camera.vehicle_tracking_enabled}")
+            print(f"🚀 STARTUP: Camera {camera.id} vehicle_tracking_enabled type: {type(camera.vehicle_tracking_enabled)}")
             
             # Initialize runtime status
             update_camera_status(camera.id, is_active=camera.is_active, streaming_status="stopped")
@@ -114,7 +115,7 @@ async def initialize_cameras_on_startup(db: Session, client: httpx.AsyncClient):
             # Re-start vehicle tracking if enabled
             if camera.vehicle_tracking_enabled:
                 try:
-                    print(f"🔄 Re-starting vehicle tracking for camera {camera.id}")
+                    print(f"🔄 Re-starting vehicle tracking for camera {camera.id} using inference endpoint")
                     ai_service_url = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
                     tracking_response = await client.post(
                         f"{ai_service_url}/vehicle-tracking/start/",
@@ -217,6 +218,8 @@ async def create_camera(
         print(f"⏸️ Camera {db_camera.id} created but not auto-started (is_active={db_camera.is_active}, has_rtsp={bool(camera.rtsp_url)})")
     
     # Start vehicle tracking if enabled (use database value)
+    print(f"🔍 VEHICLE TRACKING CHECK: db_camera.vehicle_tracking_enabled = {db_camera.vehicle_tracking_enabled}")
+    print(f"🔍 VEHICLE TRACKING CHECK: type = {type(db_camera.vehicle_tracking_enabled)}")
     if db_camera.vehicle_tracking_enabled:
         try:
             print(f"🚗 Starting vehicle tracking for camera {db_camera.id}")
@@ -235,6 +238,8 @@ async def create_camera(
         except Exception as e:
             print(f"❌ Error starting vehicle tracking for camera {db_camera.id}: {str(e)}")
             response["video_validation"]["errors"].append(f"Vehicle tracking start error: {str(e)}")
+    else:
+        print(f"⏸️ Vehicle tracking NOT started for camera {db_camera.id} (vehicle_tracking_enabled=False)")
     
     # Get video information if RTSP URL is provided
     if camera.rtsp_url:
@@ -400,18 +405,13 @@ async def update_camera(
             # Update runtime status
             update_camera_status(camera_id, is_active=new_active_status)
     
-    # NOW update the camera in the database
-    db_camera = camera_crud.update_camera(db, camera_id=camera_id, camera_update=camera_update)
-    if db_camera is None:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    # Handle vehicle tracking enable/disable
+    # Handle vehicle tracking enable/disable BEFORE updating the database
     print(f"🔍 Update data for camera {camera_id}: {update_data}")
     print(f"🔍 vehicle_tracking_enabled in update_data: {'vehicle_tracking_enabled' in update_data}")
     
     if 'vehicle_tracking_enabled' in update_data:
         new_tracking_status = update_data['vehicle_tracking_enabled']
-        old_tracking_status = current_camera.vehicle_tracking_enabled
+        old_tracking_status = current_camera.vehicle_tracking_enabled  # Read OLD status BEFORE update
         
         print(f"🔍 Vehicle tracking update check for camera {camera_id}:")
         print(f"   - Old status: {old_tracking_status}")
@@ -426,7 +426,8 @@ async def update_camera(
                 ai_service_url = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
                 
                 if new_tracking_status:
-                    # Start vehicle tracking
+                    # Start vehicle tracking - use existing inference endpoint
+                    print(f"🚗 Starting vehicle tracking for camera {camera_id} using inference endpoint")
                     tracking_response = await client.post(
                         f"{ai_service_url}/vehicle-tracking/start/",
                         json={"camera_id": str(camera_id)},
@@ -449,6 +450,11 @@ async def update_camera(
                         print(f"❌ Failed to stop vehicle tracking for camera {camera_id}: {tracking_response.status_code}")
             except Exception as e:
                 print(f"❌ Error managing vehicle tracking for camera {camera_id}: {str(e)}")
+    
+    # NOW update the camera in the database
+    db_camera = camera_crud.update_camera(db, camera_id=camera_id, camera_update=camera_update)
+    if db_camera is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
     
     return CameraInDB.model_validate(db_camera)
 
@@ -1048,14 +1054,20 @@ async def enable_vehicle_tracking(
     """
     Enable vehicle tracking for a camera
     """
+    print(f"🚗 ENABLE VEHICLE TRACKING API CALL - Camera ID: {camera_id}")
+    
     db_camera = camera_crud.get_camera(db, camera_id=camera_id)
     if db_camera is None:
+        print(f"❌ ENABLE VEHICLE TRACKING: Camera {camera_id} not found")
         raise HTTPException(status_code=404, detail="Camera not found")
     
     try:
         # Enable vehicle tracking in database
+        print(f"🔄 ENABLE VEHICLE TRACKING: Setting vehicle_tracking_enabled=True for camera {camera_id}")
         camera_update = CameraUpdate(vehicle_tracking_enabled=True)
         updated_camera = camera_crud.update_camera(db, camera_id=camera_id, camera_update=camera_update)
+        
+        print(f"✅ ENABLE VEHICLE TRACKING: Updated camera {camera_id} vehicle_tracking_enabled = {updated_camera.vehicle_tracking_enabled}")
         
         return {
             "message": "Vehicle tracking enabled",
@@ -1063,6 +1075,7 @@ async def enable_vehicle_tracking(
             "vehicle_tracking_enabled": True
         }
     except Exception as e:
+        print(f"❌ ENABLE VEHICLE TRACKING: Error enabling vehicle tracking for camera {camera_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to enable vehicle tracking: {str(e)}")
 
 @router.put("/{camera_id}/vehicle-tracking/disable/")
@@ -1074,8 +1087,11 @@ async def disable_vehicle_tracking(
     """
     Disable vehicle tracking for a camera
     """
+    print(f"🚗 DISABLE VEHICLE TRACKING API CALL - Camera ID: {camera_id}")
+    
     db_camera = camera_crud.get_camera(db, camera_id=camera_id)
     if db_camera is None:
+        print(f"❌ DISABLE VEHICLE TRACKING: Camera {camera_id} not found")
         raise HTTPException(status_code=404, detail="Camera not found")
     
     try:
@@ -1091,8 +1107,11 @@ async def disable_vehicle_tracking(
             pass
         
         # Disable vehicle tracking in database
+        print(f"🔄 DISABLE VEHICLE TRACKING: Setting vehicle_tracking_enabled=False for camera {camera_id}")
         camera_update = CameraUpdate(vehicle_tracking_enabled=False)
         updated_camera = camera_crud.update_camera(db, camera_id=camera_id, camera_update=camera_update)
+        
+        print(f"✅ DISABLE VEHICLE TRACKING: Updated camera {camera_id} vehicle_tracking_enabled = {updated_camera.vehicle_tracking_enabled}")
         
         return {
             "message": "Vehicle tracking disabled",
