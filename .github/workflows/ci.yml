@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15.5
+        env:
+          POSTGRES_USER: atriva
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: atriva_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t platform-backend .
+
+      - name: Start backend container
+        # --network host lets the container reach the postgres service at localhost:5432
+        # ENV=development triggers automatic table creation (Base.metadata.create_all) on startup
+        run: |
+          docker run -d \
+            --name backend \
+            --network host \
+            -e DATABASE_URL=postgresql://atriva:testpass@localhost:5432/atriva_ci \
+            -e ENV=development \
+            -e VIDEO_PIPELINE_URL=http://localhost:8002 \
+            -e AI_INFERENCE_URL=http://localhost:8001 \
+            platform-backend
+
+      - name: Wait for service to be healthy
+        run: |
+          echo "Waiting for platform backend (includes DB init + migrations)..."
+          timeout 90 bash -c \
+            'until curl -sf http://localhost:8000/health; do sleep 3; done'
+
+      - name: Assert health endpoint reports healthy
+        run: |
+          response=$(curl -sf http://localhost:8000/health)
+          echo "$response"
+          echo "$response" | grep '"healthy"'
+
+      - name: Assert Swagger UI is accessible
+        run: |
+          curl -sf http://localhost:8000/docs | grep -i "swagger"
+
+      - name: Print container logs on failure
+        if: failure()
+        run: docker logs backend
