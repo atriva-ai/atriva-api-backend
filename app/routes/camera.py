@@ -940,6 +940,9 @@ async def get_latest_frame(
             timeout=10.0
         )
         
+        if response.status_code == 503:
+            # DeepStream / GPU pipelines don't serve raw JPEG frames over HTTP.
+            raise HTTPException(status_code=404, detail="Frame snapshot not available for this camera backend")
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=f"Video pipeline error: {response.status_code}")
         

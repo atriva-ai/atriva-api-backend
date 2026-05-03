@@ -5,7 +5,12 @@ from .store import Store
 from .analytics import Analytics
 from .alert_engine import AlertEngine
 from .alert_event import AlertEvent
+from .analytics_event import AnalyticsEvent
 from .license_plate_detection import LicensePlateDetection
 from .entry_exit_event import EntryExitEvent
 
-__all__ = ['Camera', 'Zone', 'Settings', 'Store', 'Analytics', 'AlertEngine', 'AlertEvent', 'LicensePlateDetection', 'EntryExitEvent']
+__all__ = [
+    'Camera', 'Zone', 'Settings', 'Store', 'Analytics',
+    'AlertEngine', 'AlertEvent', 'AnalyticsEvent',
+    'LicensePlateDetection', 'EntryExitEvent',
+]
