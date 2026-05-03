@@ -1,6 +1,10 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference, alert_engine, license_plate_detection, entrance_exit
-from app.database import engine, Base, get_db
+from app.routes import analytics_events
+from app.database import engine, Base, get_db, SessionLocal
+from app.services.analytics_processor import AnalyticsProcessor
 import time
 import psycopg2
 import os
@@ -11,7 +15,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 # Import all models to ensure they are registered with SQLAlchemy
-from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine, LicensePlateDetection, EntryExitEvent
+from app.db.models import Store, Settings, Camera, Zone, Analytics, AlertEngine, LicensePlateDetection, EntryExitEvent, AnalyticsEvent
 
 # Step 1: Initialize DB models/tables
 # Only create tables automatically in dev, not production
@@ -62,12 +66,52 @@ if os.getenv("ENV", "production") != "production":
     seed()
     print("✅ Database seeded successfully")
 
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai_inference:8001")
+ANALYTICS_POLL_INTERVAL = float(os.getenv("ANALYTICS_POLL_INTERVAL", "1.0"))
+
+_processor: AnalyticsProcessor = None  # type: ignore[assignment]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _processor
+    print("🚀 BACKEND STARTUP: Starting application initialization...")
+    try:
+        db = next(get_db())
+        async with httpx.AsyncClient() as client:
+            await camera.initialize_cameras_on_startup(db, client)
+        print("✅ BACKEND STARTUP: Camera initialization completed")
+    except Exception as e:
+        print(f"❌ BACKEND STARTUP ERROR: {e}")
+        import traceback; traceback.print_exc()
+    finally:
+        if 'db' in locals():
+            db.close()
+
+    # Start analytics processor
+    _processor = AnalyticsProcessor(
+        db_factory=SessionLocal,
+        detection_service_url=AI_SERVICE_URL,
+        poll_interval=ANALYTICS_POLL_INTERVAL,
+    )
+    analytics_events.processor = _processor
+    await _processor.start()
+    print(f"✅ Analytics processor started (poll={ANALYTICS_POLL_INTERVAL}s → {AI_SERVICE_URL})")
+
+    yield  # app is running
+
+    # Shutdown
+    await _processor.stop()
+    print("🛑 Analytics processor stopped")
+
+
 # Step 2: Initialize FastAPI app
 app = FastAPI(
     title="Retail Dashboard Backend",
-    docs_url="/docs",           # default is "/docs"
-    redoc_url="/redoc",         # default is "/redoc"
-    openapi_url="/openapi.json" # default is "/openapi.json"
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 # Configure logging to show API requests
@@ -190,6 +234,11 @@ try:
 except Exception as e:
     print("Failed to load entrance/exit routes:", e)
 
+try:
+    app.include_router(analytics_events.router)
+except Exception as e:
+    print("Failed to load analytics events routes:", e)
+
 # @app.get("/")
 # def health():
 #    return {"ok": True}
@@ -206,28 +255,6 @@ def health():
     except Exception as e:
         return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize cameras and services on application startup"""
-    print("🚀 BACKEND STARTUP: Starting application initialization...")
-    
-    try:
-        # Get database session
-        db = next(get_db())
-        
-        # Initialize cameras on startup
-        async with httpx.AsyncClient() as client:
-            await camera.initialize_cameras_on_startup(db, client)
-        
-        print("✅ BACKEND STARTUP: Application initialization completed successfully")
-        
-    except Exception as e:
-        print(f"❌ BACKEND STARTUP ERROR: Failed to initialize application: {str(e)}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        if 'db' in locals():
-            db.close()
 
 @app.get("/test-log")
 def test_log():

@@ -202,12 +202,39 @@ def clear_all_track_states():
 def get_track_state(track_id: int) -> Optional[Dict[str, Any]]:
     """
     Get the current debounce state for a track.
-    
+
     Args:
         track_id: The track ID to query
-    
+
     Returns:
         Dictionary with "last_cross_time" and "last_direction", or None if track not found
     """
     return track_state.get(track_id)
+
+
+def point_in_polygon(px: float, py: float, polygon: list) -> bool:
+    """
+    Ray-casting point-in-polygon test.
+
+    Args:
+        px, py: Point coordinates (normalised [0,1] or absolute pixels).
+        polygon: List of [x, y] pairs (or (x, y) tuples) forming a closed polygon.
+                 The last point does NOT need to repeat the first.
+
+    Returns:
+        True if the point is inside the polygon, False otherwise.
+    """
+    n = len(polygon)
+    if n < 3:
+        return False
+
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = float(polygon[i][0]), float(polygon[i][1])
+        xj, yj = float(polygon[j][0]), float(polygon[j][1])
+        if ((yi > py) != (yj > py)) and (px < (xj - xi) * (py - yi) / (yj - yi + 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
 
