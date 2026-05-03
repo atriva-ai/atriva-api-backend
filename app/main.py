@@ -3,8 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.routes import store, settings, camera, zone, analytics, video_pipeline, ai_inference, alert_engine, license_plate_detection, entrance_exit
 from app.routes import analytics_events
+from app.routes import ws as ws_routes
 from app.database import engine, Base, get_db, SessionLocal
 from app.services.analytics_processor import AnalyticsProcessor
+from app.services.ws_hub import WebSocketHub
 import time
 import psycopg2
 import os
@@ -88,11 +90,16 @@ async def lifespan(app: FastAPI):
         if 'db' in locals():
             db.close()
 
-    # Start analytics processor
+    # Create WebSocket hub and inject into route modules
+    _hub = WebSocketHub()
+    ws_routes.hub = _hub
+
+    # Start analytics processor (receives hub for broadcasting)
     _processor = AnalyticsProcessor(
         db_factory=SessionLocal,
         detection_service_url=AI_SERVICE_URL,
         poll_interval=ANALYTICS_POLL_INTERVAL,
+        hub=_hub,
     )
     analytics_events.processor = _processor
     await _processor.start()
@@ -238,6 +245,11 @@ try:
     app.include_router(analytics_events.router)
 except Exception as e:
     print("Failed to load analytics events routes:", e)
+
+try:
+    app.include_router(ws_routes.router)
+except Exception as e:
+    print("Failed to load WebSocket routes:", e)
 
 # @app.get("/")
 # def health():

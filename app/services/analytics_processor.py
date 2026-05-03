@@ -35,6 +35,7 @@ from app.db.models.analytics import Analytics
 from app.db.schemas.analytics_event import AnalyticsEventCreate
 from app.geometry_utils import detect_line_crossing, point_in_polygon, should_count_crossing
 from app.services.detection_adapter import Detection, DetectionAdapter
+from app.services.ws_hub import WebSocketHub
 
 logger = logging.getLogger(__name__)
 
@@ -291,10 +292,12 @@ class AnalyticsProcessor:
         db_factory,
         detection_service_url: str,
         poll_interval: float = 1.0,
+        hub: Optional[WebSocketHub] = None,
     ):
         self._db_factory = db_factory
         self._adapter = DetectionAdapter(detection_service_url)
         self._interval = poll_interval
+        self._hub = hub
         self._task: Optional[asyncio.Task] = None
         # Keyed by (camera_id: int, analytics_id: int)
         self._state: Dict[Tuple[int, int], _AnalyticsState] = {}
@@ -358,6 +361,18 @@ class AnalyticsProcessor:
                 if detections is None:
                     continue
 
+                # Push live detection count to any subscribed WebSocket clients.
+                if self._hub:
+                    asyncio.ensure_future(self._hub.broadcast(
+                        f"camera:{cam.id}",
+                        {
+                            "type": "detections",
+                            "camera_id": cam.id,
+                            "count": len(detections),
+                            "ts": int(time.time()),
+                        },
+                    ))
+
                 for anal in cam_analytics:
                     key = (cam.id, anal.id)
                     if key not in self._state:
@@ -382,6 +397,20 @@ class AnalyticsProcessor:
             if pending_events:
                 bulk_create(db, pending_events)
                 logger.debug("Stored %d analytics events", len(pending_events))
+                # Broadcast each analytics event to subscribed WebSocket clients.
+                if self._hub:
+                    for evt in pending_events:
+                        asyncio.ensure_future(self._hub.broadcast(
+                            "analytics",
+                            {
+                                "type": "analytics_event",
+                                "camera_id": evt.camera_id,
+                                "analytics_id": evt.analytics_id,
+                                "event_type": evt.event_type,
+                                "value": evt.value,
+                                "ts": int(time.time()),
+                            },
+                        ))
 
         finally:
             db.close()
