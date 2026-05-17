@@ -157,6 +157,9 @@ async def initialize_cameras_on_startup(db: Session, client: httpx.AsyncClient):
                     if decode_response.status_code == 200:
                         print(f"✅ Camera {camera.id} re-activated successfully")
                         update_camera_status(camera.id, streaming_status="streaming")
+                        if camera.person_detection_enabled:
+                            async with httpx.AsyncClient() as ai_client:
+                                await start_ai_inference_for_camera(camera.id, ai_client, db=db)
                     else:
                         print(f"❌ Failed to re-activate camera {camera.id}: {decode_response.status_code}")
                 except Exception as e:

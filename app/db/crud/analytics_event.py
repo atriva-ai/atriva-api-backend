@@ -102,3 +102,40 @@ def latest_event(
         .order_by(desc(AnalyticsEvent.created_at))
         .first()
     )
+
+
+def count_global_by_event_type(
+    db: Session,
+    event_type: str,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> int:
+    """Count events of a given type across all cameras and analytics configs."""
+    q = db.query(func.count(AnalyticsEvent.id)).filter(
+        AnalyticsEvent.event_type == event_type,
+    )
+    if start_time:
+        q = q.filter(AnalyticsEvent.created_at >= start_time)
+    if end_time:
+        q = q.filter(AnalyticsEvent.created_at <= end_time)
+    return q.scalar() or 0
+
+
+def count_by_hour(
+    db: Session,
+    event_type: str,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> List[dict]:
+    """Count events grouped by hour-of-day (0-23), useful for traffic charts."""
+    hour_col = func.extract("hour", AnalyticsEvent.created_at).label("hour")
+    q = db.query(hour_col, func.count(AnalyticsEvent.id).label("count")).filter(
+        AnalyticsEvent.event_type == event_type,
+    )
+    if start_time:
+        q = q.filter(AnalyticsEvent.created_at >= start_time)
+    if end_time:
+        q = q.filter(AnalyticsEvent.created_at <= end_time)
+    rows = q.group_by(hour_col).all()
+    counts = {int(r.hour): r.count for r in rows}
+    return [{"hour": h, "count": counts.get(h, 0)} for h in range(24)]
